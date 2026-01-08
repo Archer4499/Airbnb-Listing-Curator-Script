@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Airbnb Listing Curator (Hiding/Highlighting)
 // @namespace    https://github.com/Archer4499
-// @version      1.2
+// @version      1.2.1
 // @description  Hide or highlight listings on Airbnb
 // @author       Ailou
 // @license		 MIT
@@ -135,20 +135,29 @@
     document.head.appendChild(style);
 
     // Helpers
-    function getListingStates() {
+    function getSavedListings() {
         return GM_getValue(STORAGE_KEY, {});
     }
 
-    function setListingState(id, state) {
-        const states = getListingStates();
+    function setSavedListing(id, state, name=null) {
+        const listings = getSavedListings();
         if (state === null) {
-            delete states[id]; // Remove from storage if neutral
+            delete listings[id]; // Remove from storage if neutral
             console.log(`[Airbnb Listing Curator] Removed ID ${id} from storage.`);
         } else {
-            states[id] = state;
+            if (Object.hasOwn(listings, id)) {
+                if (!Array.isArray(listings[id])) {
+                    listings[id] = [state, name];
+                } else {
+                    listings[id][0] = state;
+                    if (name) listings[id][1] = name;
+                }
+            } else {
+                listings[id] = [state, name];
+            }
             console.log(`[Airbnb Listing Curator] Set ID ${id} to ${state}.`);
         }
-        GM_setValue(STORAGE_KEY, states);
+        GM_setValue(STORAGE_KEY, listings);
     }
 
     function getContainerElement(meta) {
@@ -217,18 +226,23 @@
             e.preventDefault();
             e.stopPropagation();
 
-            const currentStoredState = getListingStates()[listingId];
 
-            if (currentStoredState === targetState) {
+            const currentSavedState = getSavedListings()[listingId];
+            if (Array.isArray(currentSavedState)) currentSavedState = currentSavedState[0];
+
+            if (currentSavedState === targetState) {
                 // Toggle OFF (return to neutral)
-                setListingState(listingId, null);
+                setSavedListing(listingId, null);
                 applyVisuals(container, null, panel);
             } else {
                 // Set New State
                 // Safety check for Hide
                 if (targetState === 'HIDDEN' && !confirm('Hide this listing?')) return;
 
-                setListingState(listingId, targetState);
+                const metaName = container.querySelector('meta[itemprop="name"]');
+                const name = (metaName) ? metaName.content : null;
+
+                setSavedListing(listingId, targetState, name);
                 applyVisuals(container, targetState, panel);
             }
         });
@@ -241,7 +255,7 @@
         // Use the listing url meta tags to find each listing
         const metaTags = document.querySelectorAll('meta[itemprop="url"]');
 
-        const savedStates = getListingStates();
+        const savedListings = getSavedListings();
 
         metaTags.forEach(meta => {
             const content = meta.getAttribute('content');
@@ -281,7 +295,8 @@
             }
 
             // Apply the saved state
-            const savedState = savedStates[listingId];
+            const savedState = savedListings[listingId];
+            if (Array.isArray(savedState)) savedState = savedState[0];
 
             applyVisuals(container, savedState, panel);
         });
@@ -293,7 +308,7 @@
         const existing = document.querySelector('.curator-overlay');
         if (existing) existing.remove();
 
-        const data = getListingStates();
+        const data = getSavedListings();
         const overlay = document.createElement('div');
         overlay.className = 'curator-overlay';
 
@@ -317,7 +332,7 @@
         const hiddenTitle = document.createElement('h3');
         hiddenTitle.innerText = 'Hidden';
 
-        const headerHTML = `<thead><tr><th>ID</th><th style="width: 130px;">Link</th><th style="text-align: right;width: 10px;">Remove</th></tr></thead><tbody></tbody>`;
+        const headerHTML = `<thead><tr><th>Name</th><th style="width: 130px;">Link</th><th style="text-align: right;width: 10px;">Remove</th></tr></thead><tbody></tbody>`;
         const highlight2Table = document.createElement('table');
         highlight2Table.className = 'curator-table';
         highlight2Table.innerHTML = headerHTML;
@@ -333,26 +348,28 @@
         hiddenTable.innerHTML = headerHTML;
         const hiddenTbody = hiddenTable.querySelector('tbody');
 
-        Object.entries(data).forEach(([id, state]) => {
+        Object.entries(data).forEach(([id, listing]) => {
+            if (!Array.isArray(listing)) listing = [listing, null];
+
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${id}</td>
+                <td>${(listing[1]) ? listing[1] : id}</td>
                 <td><a href="https://www.airbnb.com.au/rooms/${id}" target="_blank" class="curator-link">View Listing</a></td>
             `;
 
             const removeButton = document.createElement('button');
             removeButton.innerHTML = '&times;';
-            removeButton.onclick = () => { setListingState(id, null); tr.remove() };
+            removeButton.onclick = () => { setSavedListing(id, null); tr.remove() };
             const removeCell = document.createElement('td');
             removeCell.style.textAlign = 'right';
             removeCell.appendChild(removeButton);
             tr.appendChild(removeCell);
 
-            if (state === 'HIDDEN') {
+            if (listing[0] === 'HIDDEN') {
                 hiddenTbody.appendChild(tr);
-            } else if (state === 'HIGHLIGHT_1') {
+            } else if (listing[0] === 'HIGHLIGHT_1') {
                 highlight1Tbody.appendChild(tr);
-            } else if (state === 'HIGHLIGHT_2') {
+            } else if (listing[0] === 'HIGHLIGHT_2') {
                 highlight2Tbody.appendChild(tr);
             }
         });
