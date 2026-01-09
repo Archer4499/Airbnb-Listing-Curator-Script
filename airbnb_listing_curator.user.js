@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Airbnb Listing Curator (Hiding/Highlighting)
 // @namespace    https://github.com/Archer4499
-// @version      1.2.2
+// @version      1.2.3
 // @description  Hide or highlight listings on Airbnb
 // @author       Ailou
 // @license		 MIT
@@ -35,6 +35,15 @@
     // Styles
     const style = document.createElement('style');
     style.textContent = `
+        .curator-theme-hide {
+            background-color: #ffcccc; color: #cc0000;
+        }
+        .curator-theme-h1   {
+            background-color: #fffacd; color: #b8860b; /* Yellow */
+        }
+        .curator-theme-h2   {
+            background-color: #ccffcc; color: #006400; /* Green */
+        }
         .curator-button-panel {
             position: absolute;
             bottom: 12px;
@@ -65,24 +74,14 @@
             transform: scale(1.1);
             opacity: 1;
         }
-        .curator-button-hide {
-            background-color: #ffcccc; color: #cc0000;
-            border-radius: 40px 0px 0px 40px;
-        }
-        .curator-button-h1   {
-            background-color: #fffacd; color: #b8860b; /* Yellow */
-            border-radius: 0px;
-        }
-        .curator-button-h2   {
-            background-color: #ccffcc; color: #006400; /* Green */
-            border-radius: 0px 40px 40px 0px;
-            padding-bottom: 2px;
-        }
         .curator-button.active {
             border: 1px solid #555;
             opacity: 1;
             transform: scale(1.1);
         }
+        button.curator-theme-hide { border-radius: 40px 0px 0px 40px; }
+        button.curator-theme-h1   { border-radius: 0px; }
+        button.curator-theme-h2   { border-radius: 0px 40px 40px 0px; padding-bottom: 2px; }
 
         /* --- Dashboard Overlay --- */
         .curator-overlay {
@@ -130,7 +129,7 @@
         }
         .curator-table { width: 100%; border-collapse: collapse; }
         .curator-table th { text-align: left; border-bottom: 2px solid #ddd; padding: 8px; }
-        .curator-table td { border-bottom: 1px solid #eee; padding: 8px; }
+        .curator-table td { border-bottom: 1px solid #eee; padding: 8px; color: #222; }
         .curator-link { text-decoration: none; color: #222; font-weight: 500; }
         .curator-link:hover { text-decoration: underline; }
     `;
@@ -306,9 +305,9 @@
                 panel = document.createElement('div');
                 panel.className = 'curator-button-panel';
 
-                const buttonHide = createButton('✕', 'curator-button-hide', 'Hide Listing', 'HIDDEN', listingId, panel, container);
-                const buttonH1 = createButton('?', 'curator-button-h1', 'Maybe', 'HIGHLIGHT_1', listingId, panel, container);
-                const buttonH2 = createButton('★', 'curator-button-h2', 'Like', 'HIGHLIGHT_2', listingId, panel, container);
+                const buttonHide = createButton('✕', 'curator-theme-hide', 'Hide Listing', 'HIDDEN', listingId, panel, container);
+                const buttonH1 = createButton('?', 'curator-theme-h1', 'Maybe', 'HIGHLIGHT_1', listingId, panel, container);
+                const buttonH2 = createButton('★', 'curator-theme-h2', 'Like', 'HIGHLIGHT_2', listingId, panel, container);
                 // Heart Icon <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="display: block;fill: rgba(0, 0, 0, 0.5);height: 16px;width: 16px;overflow: visible;padding-top: 2px;"><path d="m15.9998 28.6668c7.1667-4.8847 14.3334-10.8844 14.3334-18.1088 0-1.84951-.6993-3.69794-2.0988-5.10877-1.3996-1.4098-3.2332-2.11573-5.0679-2.11573-1.8336 0-3.6683.70593-5.0668 2.11573l-2.0999 2.11677-2.0988-2.11677c-1.3995-1.4098-3.2332-2.11573-5.06783-2.11573-1.83364 0-3.66831.70593-5.06683 2.11573-1.39955 1.41083-2.09984 3.25926-2.09984 5.10877 0 7.2244 7.16667 13.2241 14.3333 18.1088z"></path></svg>
 
                 panel.appendChild(buttonHide);
@@ -328,16 +327,17 @@
 
     // Dashboard
     function showDashboard() {
-        // Remove existing if open
+        // Do nothing if already open
         const existing = document.querySelector('.curator-overlay');
-        if (existing) existing.remove();
-
+        if (existing) return;
 
         const overlay = document.createElement('div');
         overlay.className = 'curator-overlay';
+        overlay.onclick = () => overlay.remove();
 
         const modal = document.createElement('div');
         modal.className = 'curator-modal';
+        modal.onclick = (e) => e.stopPropagation();
 
         const closeButton = document.createElement('button');
         closeButton.innerHTML = '&times;';
@@ -361,16 +361,19 @@
         highlight2Table.className = 'curator-table';
         highlight2Table.innerHTML = headerHTML;
         const highlight2Tbody = highlight2Table.querySelector('tbody');
+        highlight2Tbody.className = 'curator-theme-h2';
 
         const highlight1Table = document.createElement('table');
         highlight1Table.className = 'curator-table';
         highlight1Table.innerHTML = headerHTML;
         const highlight1Tbody = highlight1Table.querySelector('tbody');
+        highlight1Tbody.className = 'curator-theme-h1';
 
         const hiddenTable = document.createElement('table');
         hiddenTable.className = 'curator-table';
         hiddenTable.innerHTML = headerHTML;
         const hiddenTbody = hiddenTable.querySelector('tbody');
+        hiddenTbody.className = 'curator-theme-hide';
 
         const data = getSavedListings();
 
