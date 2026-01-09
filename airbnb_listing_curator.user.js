@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Airbnb Listing Curator (Hiding/Highlighting)
 // @namespace    https://github.com/Archer4499
-// @version      1.2.4
+// @version      1.3.0
 // @description  Hide or highlight listings on Airbnb
 // @author       Ailou
 // @license		 MIT
@@ -27,6 +27,7 @@
 
     // Colours
     const COLOURS = {
+        HIDE: '#ffcccc',
         HIGHLIGHT_1: '#fffacd',
         HIGHLIGHT_2: '#ccffcc',
         NEUTRAL: ''
@@ -36,13 +37,13 @@
     const style = document.createElement('style');
     style.textContent = `
         .curator-theme-hide {
-            background-color: #ffcccc; color: #cc0000;
+            background-color: ${COLOURS.HIDE}; color: #cc0000;
         }
         .curator-theme-h1   {
-            background-color: #fffacd; color: #b8860b; /* Yellow */
+            background-color: ${COLOURS.HIGHLIGHT_1}; color: #b8860b; /* Yellow */
         }
         .curator-theme-h2   {
-            background-color: #ccffcc; color: #006400; /* Green */
+            background-color: ${COLOURS.HIGHLIGHT_2}; color: #006400; /* Green */
         }
         .curator-button-panel {
             position: absolute;
@@ -62,7 +63,7 @@
             width:  20px;
             height: 20px;
             cursor: pointer;
-            font-weight: var(--typography-weight-medium500);
+            font-weight: 500;
             line-height: 18px;
             display: flex;
             align-items: center;
@@ -82,6 +83,28 @@
         button.curator-theme-hide { border-radius: 40px 0px 0px 40px; }
         button.curator-theme-h1   { border-radius: 0px; }
         button.curator-theme-h2   { border-radius: 0px 40px 40px 0px; padding-bottom: 2px; }
+
+        /* --- Listing Page Sidebar Panel --- */
+        .curator-sidebar-panel {
+            margin: 24px 0px;
+            padding: 16px 24px;
+            background: var(--palette-bg-primary);
+            border-radius: 12px;
+            border: var(--elevation-high-border);
+            box-shadow: var(--elevation-secondary-box-shadow);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .curator-sidebar-label { font-weight: 500; font-size: 14px; line-height: 18px; color: #222222; }
+        .curator-sidebar-buttons { display: flex; gap: 8px; }
+        .curator-button-large {
+            padding: 14px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(0,0,0,0.1);
+            cursor: pointer;
+            font-weight: 500;
+        }
 
         /* --- Dashboard Overlay --- */
         .curator-overlay {
@@ -213,7 +236,7 @@
         return anchor;
     }
 
-    function applyVisuals(container, state, panel) {
+    function applyGridVisuals(container, state, panel) {
         const buttons = panel.querySelectorAll('.curator-button');
         if (!buttons) return;
 
@@ -246,6 +269,18 @@
         }
     }
 
+    function applyListingPageVisuals(state, panel) {
+        const buttons = panel.querySelectorAll('.curator-button-large');
+        if (!buttons) return;
+        for (const button of buttons) {
+            button.style.border = '1px solid rgba(0,0,0,0.1)';
+        }
+
+        if (state === 'HIDDEN') buttons[0].style.border = '2px solid red';
+        if (state === 'HIGHLIGHT_1') buttons[1].style.border = '2px solid orange';
+        if (state === 'HIGHLIGHT_2') buttons[2].style.border = '2px solid green';
+    }
+
     function createButton(text, className, title, targetState, listingId, panel, container) {
         const button = document.createElement('button');
         button.innerText = text;
@@ -261,17 +296,16 @@
             if (currentSavedState === targetState) {
                 // Toggle OFF (return to neutral)
                 setSavedListing(listingId, null);
-                applyVisuals(container, null, panel);
+                applyGridVisuals(container, null, panel);
             } else {
                 // Set New State
-                // Safety check for Hide
                 if (targetState === 'HIDDEN' && !confirm('Hide this listing?')) return;
 
                 const metaName = container.querySelector('meta[itemprop="name"]');
                 const name = (metaName) ? metaName.content : null;
 
                 setSavedListing(listingId, targetState, name);
-                applyVisuals(container, targetState, panel);
+                applyGridVisuals(container, targetState, panel);
             }
         });
         return button;
@@ -288,7 +322,7 @@
             if (!content) continue;
 
             // Extract the ID from the URL
-            const match = content.match(/(\d+)/);
+            const match = content.match(/rooms\/(\d+)/);
             if (!match) continue;
             const listingId = match[1];
 
@@ -308,7 +342,6 @@
                 const buttonHide = createButton('✕', 'curator-theme-hide', 'Hide Listing', 'HIDDEN', listingId, panel, container);
                 const buttonH1 = createButton('?', 'curator-theme-h1', 'Maybe', 'HIGHLIGHT_1', listingId, panel, container);
                 const buttonH2 = createButton('★', 'curator-theme-h2', 'Like', 'HIGHLIGHT_2', listingId, panel, container);
-                // Heart Icon <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="display: block;fill: rgba(0, 0, 0, 0.5);height: 16px;width: 16px;overflow: visible;padding-top: 2px;"><path d="m15.9998 28.6668c7.1667-4.8847 14.3334-10.8844 14.3334-18.1088 0-1.84951-.6993-3.69794-2.0988-5.10877-1.3996-1.4098-3.2332-2.11573-5.0679-2.11573-1.8336 0-3.6683.70593-5.0668 2.11573l-2.0999 2.11677-2.0988-2.11677c-1.3995-1.4098-3.2332-2.11573-5.06783-2.11573-1.83364 0-3.66831.70593-5.06683 2.11573-1.39955 1.41083-2.09984 3.25926-2.09984 5.10877 0 7.2244 7.16667 13.2241 14.3333 18.1088z"></path></svg>
 
                 panel.appendChild(buttonHide);
                 panel.appendChild(buttonH1);
@@ -321,8 +354,71 @@
             }
 
             // Apply the saved state or clear it
-            applyVisuals(container, getSavedListingOrDefault(listingId).state, panel);
+            applyGridVisuals(container, getSavedListingOrDefault(listingId).state, panel);
         }
+    }
+
+    function processSingleListing() {
+        // Get ID from URL
+        const urlMatch = window.location.href.match(/rooms\/(\d+)/);
+        if (!urlMatch) return;
+        const listingId = urlMatch[1];
+
+        // Find Sidebar Anchor
+        const sidebar = document.querySelector('div[data-section-id="BOOK_IT_SIDEBAR"]');
+        if (!sidebar) return;
+
+        // Create the Panel if not already existing
+        let panel = document.querySelector('.curator-sidebar-panel');
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.className = 'curator-sidebar-panel';
+
+            const label = document.createElement('span');
+            label.className = 'curator-sidebar-label';
+            label.innerText = 'Curator Status:';
+            panel.appendChild(label);
+
+            const buttonContainer = document.createElement('div');
+            buttonContainer.className = 'curator-sidebar-buttons';
+
+            const createSingleButton = (text, color, targetState) => {
+                const button = document.createElement('button');
+                button.innerText = text;
+                button.className = 'curator-button-large';
+                button.style.backgroundColor = color;
+                button.onclick = () => {
+                    const currentSavedState = getSavedListingOrDefault(listingId).state;
+
+                    if (currentSavedState === targetState) {
+                        // Toggle OFF (return to neutral)
+                        setSavedListing(listingId, null);
+                        applyListingPageVisuals(null, panel);
+                    } else {
+                        // Set New State
+                        if (targetState === 'HIDDEN' && !confirm('Hide this listing?')) return;
+
+                        const metaName = document.querySelector('meta[property="og:description"]');
+                        const name = (metaName) ? metaName.content : null;
+
+                        setSavedListing(listingId, targetState, name);
+                        applyListingPageVisuals(targetState, panel);
+                    }
+                };
+                return button;
+            };
+
+            buttonContainer.appendChild(createSingleButton('Hide', COLOURS.HIDE, 'HIDDEN'));
+            buttonContainer.appendChild(createSingleButton('Maybe', COLOURS.HIGHLIGHT_1, 'HIGHLIGHT_1'));
+            buttonContainer.appendChild(createSingleButton('Like', COLOURS.HIGHLIGHT_2, 'HIGHLIGHT_2'));
+            panel.appendChild(buttonContainer);
+            // Attempt to insert above the price in the sidebar
+            sidebar.insertBefore(panel, sidebar.lastChild);
+        }
+
+        // Update Visuals based on state
+        const state = getSavedListingOrDefault(listingId).state;
+        applyListingPageVisuals(state, panel);
     }
 
     // Dashboard
@@ -423,18 +519,33 @@
         }
     });
 
-    // Watch for DOM changes of the listings table
-    const observer = new MutationObserver(() => {
-        processListings();
-    });
-    observer.observe(document.querySelector('div[data-xray-jira-component="Guest: Listing Cards"]'), { childList: true, subtree: true });
+    // Set observers and intervals
+    if (window.location.href.includes('/homes')) {
+        // If on the listings grid page
 
-    // Also run every 2 seconds to catch any other sources of changes
-    setInterval(processListings, 2000);
+        // Watch for DOM changes of the listings grid
+        const observer = new MutationObserver(() => {
+            processListings();
+        });
+        observer.observe(document.querySelector('div[data-xray-jira-component="Guest: Listing Cards"]'), { childList: true, subtree: true });
 
-    // Initial run
-    setTimeout(() => {
-        processListings();
-    }, 500);
+        // Also run every 2 seconds to catch any other sources of changes
+        setInterval(processListings, 2000);
 
+        // Initial run
+        setTimeout(() => {
+            processListings();
+        }, 500);
+
+    } else if (window.location.href.includes('/rooms/')) {
+        // Or on an actual listing page
+
+        // Also run every 2 seconds to catch any other sources of changes
+        setInterval(processSingleListing, 2000);
+
+        // Initial run
+        setTimeout(() => {
+            processSingleListing();
+        }, 800);
+    }
 })();
