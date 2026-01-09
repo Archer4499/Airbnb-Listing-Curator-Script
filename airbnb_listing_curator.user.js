@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Airbnb Listing Curator (Hiding/Highlighting)
 // @namespace    https://github.com/Archer4499
-// @version      1.2.1
+// @version      1.2.2
 // @description  Hide or highlight listings on Airbnb
 // @author       Ailou
 // @license		 MIT
@@ -21,7 +21,9 @@
     'use strict';
 
     // Configuration
-    const STORAGE_KEY = 'airbnb_listing_states';
+    const STORAGE_CURRENT_VERSION = 'v2';
+    const STORAGE_VERSION_KEY = 'version';
+    const STORAGE_LISTING_KEY = 'airbnb_listing_states';
 
     // Colours
     const COLOURS = {
@@ -134,30 +136,59 @@
     `;
     document.head.appendChild(style);
 
+
     // Helpers
+
+    // Run once each time the script is initialised
+    (function migrateStorage() {
+        if (GM_getValue(STORAGE_VERSION_KEY, '') != STORAGE_CURRENT_VERSION) {
+            // Migrate v1 to v2
+            //  From each listing only storing its id to being an array also storing its name
+            if (GM_getValue(STORAGE_VERSION_KEY, '') === '') {
+                console.log(`[Airbnb Listing Curator] Migrating storage from v1 to v2.`);
+
+                const listings = getSavedListings();
+                let migratedListings = {};
+
+                for (const [id, state] of Object.entries(listings)) {
+                    if (state === null || state.constructor != Object) {
+                        migratedListings[id] = {state: state, name: ''};
+                    }
+                }
+                GM_setValue(STORAGE_LISTING_KEY, migratedListings);
+                GM_setValue(STORAGE_VERSION_KEY, 'v2');
+            }
+        }
+    })();
+
     function getSavedListings() {
-        return GM_getValue(STORAGE_KEY, {});
+        return GM_getValue(STORAGE_LISTING_KEY, {});
     }
 
-    function setSavedListing(id, state, name=null) {
+    function getSavedListingOrDefault(id) {
+        const listings = getSavedListings();
+        if (Object.hasOwn(listings, id)) {
+            return listings[id];
+        } else {
+            return {state: null, name: null};
+        }
+    }
+
+    function setSavedListing(id, state, name='') {
         const listings = getSavedListings();
         if (state === null) {
             delete listings[id]; // Remove from storage if neutral
             console.log(`[Airbnb Listing Curator] Removed ID ${id} from storage.`);
         } else {
             if (Object.hasOwn(listings, id)) {
-                if (!Array.isArray(listings[id])) {
-                    listings[id] = [state, name];
-                } else {
-                    listings[id][0] = state;
-                    if (name) listings[id][1] = name;
-                }
+                listings[id].state = state;
+                if (name) listings[id].name = name;
             } else {
-                listings[id] = [state, name];
+                listings[id] = {state: state, name: name};
             }
-            console.log(`[Airbnb Listing Curator] Set ID ${id} to ${state}.`);
+            console.log(`[Airbnb Listing Curator] Set ID: "${id}", NAME: "${listings[id].name}" to ${state}.`);
         }
-        GM_setValue(STORAGE_KEY, listings);
+        GM_setValue(STORAGE_LISTING_KEY, listings);
     }
 
     function getContainerElement(meta) {
@@ -226,9 +257,7 @@
             e.preventDefault();
             e.stopPropagation();
 
-
-            const currentSavedState = getSavedListings()[listingId];
-            if (Array.isArray(currentSavedState)) currentSavedState = currentSavedState[0];
+            const currentSavedState = getSavedListingOrDefault(listingId).state;
 
             if (currentSavedState === targetState) {
                 // Toggle OFF (return to neutral)
@@ -255,22 +284,20 @@
         // Use the listing url meta tags to find each listing
         const metaTags = document.querySelectorAll('meta[itemprop="url"]');
 
-        const savedListings = getSavedListings();
-
-        metaTags.forEach(meta => {
+        for (const meta of metaTags) {
             const content = meta.getAttribute('content');
-            if (!content) return;
+            if (!content) continue;
 
             // Extract the ID from the URL
             const match = content.match(/(\d+)/);
-            if (!match) return;
+            if (!match) continue;
             const listingId = match[1];
 
             const container = getContainerElement(meta);
-            if (!container) return;
+            if (!container) continue;
 
             const anchor = getButtonAnchorElement(container);
-            if (!anchor) return;
+            if (!anchor) continue;
 
             let panel = anchor.querySelector('.curator-button-panel');
 
@@ -294,12 +321,9 @@
                 anchor.appendChild(panel);
             }
 
-            // Apply the saved state
-            const savedState = savedListings[listingId];
-            if (Array.isArray(savedState)) savedState = savedState[0];
-
-            applyVisuals(container, savedState, panel);
-        });
+            // Apply the saved state or clear it
+            applyVisuals(container, getSavedListingOrDefault(listingId).state, panel);
+        }
     }
 
     // Dashboard
@@ -308,7 +332,7 @@
         const existing = document.querySelector('.curator-overlay');
         if (existing) existing.remove();
 
-        const data = getSavedListings();
+
         const overlay = document.createElement('div');
         overlay.className = 'curator-overlay';
 
@@ -348,12 +372,12 @@
         hiddenTable.innerHTML = headerHTML;
         const hiddenTbody = hiddenTable.querySelector('tbody');
 
-        Object.entries(data).forEach(([id, listing]) => {
-            if (!Array.isArray(listing)) listing = [listing, null];
+        const data = getSavedListings();
 
+        for (const [id, listing] of Object.entries(data)) {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${(listing[1]) ? listing[1] : id}</td>
+                <td>${(listing.name) ? listing.name : id}</td>
                 <td><a href="https://www.airbnb.com.au/rooms/${id}" target="_blank" class="curator-link">View Listing</a></td>
             `;
 
@@ -365,14 +389,14 @@
             removeCell.appendChild(removeButton);
             tr.appendChild(removeCell);
 
-            if (listing[0] === 'HIDDEN') {
+            if (listing.state === 'HIDDEN') {
                 hiddenTbody.appendChild(tr);
-            } else if (listing[0] === 'HIGHLIGHT_1') {
+            } else if (listing.state === 'HIGHLIGHT_1') {
                 highlight1Tbody.appendChild(tr);
-            } else if (listing[0] === 'HIGHLIGHT_2') {
+            } else if (listing.state === 'HIGHLIGHT_2') {
                 highlight2Tbody.appendChild(tr);
             }
-        });
+        }
 
         modal.appendChild(closeButton);
         modal.appendChild(title);
@@ -391,7 +415,7 @@
 
     GM_registerMenuCommand("Clear ALL Data", () => {
         if (confirm("Reset everything? This will unhide all listings.")) {
-            GM_setValue(STORAGE_KEY, {});
+            GM_setValue(STORAGE_LISTING_KEY, {});
             location.reload();
         }
     });
