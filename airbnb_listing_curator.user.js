@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Airbnb Listing Curator (Hiding/Highlighting)
 // @namespace    https://github.com/Archer4499
-// @version      1.2.3
+// @version      1.2.4
 // @description  Hide or highlight listings on Airbnb
 // @author       Ailou
 // @license		 MIT
@@ -386,7 +386,7 @@
 
             const removeButton = document.createElement('button');
             removeButton.innerHTML = '&times;';
-            removeButton.onclick = () => { setSavedListing(id, null); tr.remove() };
+            removeButton.onclick = () => { setSavedListing(id, null); tr.remove(); processListings(); };
             const removeCell = document.createElement('td');
             removeCell.style.textAlign = 'right';
             removeCell.appendChild(removeButton);
@@ -423,11 +423,14 @@
         }
     });
 
-    // Watch for DOM changes
+    // Watch for DOM changes of the listings table
     const observer = new MutationObserver(() => {
         processListings();
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.querySelector('div[data-xray-jira-component="Guest: Listing Cards"]'), { childList: true, subtree: true });
+
+    // Also run every 2 seconds to catch any other sources of changes
+    setInterval(processListings, 2000);
 
     // Initial run
     setTimeout(() => {
