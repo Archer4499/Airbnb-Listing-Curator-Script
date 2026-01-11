@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Airbnb Listing Curator (Hiding/Highlighting)
 // @namespace    https://github.com/Archer4499
-// @version      1.3.0
+// @version      1.3.1
 // @description  Hide or highlight listings on Airbnb
 // @author       Ailou
 // @license		 MIT
@@ -166,7 +166,7 @@
         if (GM_getValue(STORAGE_VERSION_KEY, '') != STORAGE_CURRENT_VERSION) {
             // Migrate v1 to v2
             //  From each listing only storing its id to being an array also storing its name
-            if (GM_getValue(STORAGE_VERSION_KEY, '') === '') {
+            if (GM_getValue(STORAGE_VERSION_KEY, '') === 'v1') {
                 console.log(`[Airbnb Listing Curator] Migrating storage from v1 to v2.`);
 
                 const listings = getSavedListings();
@@ -371,6 +371,15 @@
         // Create the Panel if not already existing
         let panel = document.querySelector('.curator-sidebar-panel');
         if (!panel) {
+            // Update/add the name for this listing if already saved
+            const metaName = document.querySelector('meta[property="og:description"]');
+            const name = (metaName) ? metaName.content : null;
+
+            const listing = getSavedListingOrDefault(listingId);
+            if (listing.state && name && name !== listing.name) {
+                setSavedListing(listingId, listing.state, name);
+            }
+
             panel = document.createElement('div');
             panel.className = 'curator-sidebar-panel';
 
@@ -397,9 +406,6 @@
                     } else {
                         // Set New State
                         if (targetState === 'HIDDEN' && !confirm('Hide this listing?')) return;
-
-                        const metaName = document.querySelector('meta[property="og:description"]');
-                        const name = (metaName) ? metaName.content : null;
 
                         setSavedListing(listingId, targetState, name);
                         applyListingPageVisuals(targetState, panel);
