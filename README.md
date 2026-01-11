@@ -3,7 +3,7 @@ Allows hiding or highlighting listings on Airbnb with persistent storage.
 
 ### Installing
 
-1. Install a userscript manager: [Tampermonkey](https://www.tampermonkey.net/index.php?locale=en) for most browsers, or  [Greasemonkey](https://addons.mozilla.org/en-US/firefox/addon/greasemonkey/) as an alternative option for Firefox.
+1. Install a userscript manager: [Tampermonkey](https://www.tampermonkey.net/index.php?locale=en) or [Violentmonkey](https://violentmonkey.github.io/) supported by most browsers.
 2. Click [here](https://github.com/Archer4499/Airbnb-Listing-Curator-Script/raw/main/airbnb_listing_curator.user.js) to install this script.
 
 ### Usage
