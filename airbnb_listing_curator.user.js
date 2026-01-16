@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Airbnb Listing Curator (Hiding/Highlighting)
 // @namespace    https://github.com/Archer4499
-// @version      1.3.3
+// @version      1.3.4
 // @description  Hide or highlight listings on Airbnb
 // @author       Ailou
 // @license		 MIT
@@ -33,35 +33,31 @@
         HIDDEN: 'HIDDEN',
         HIGHLIGHT_1: 'HIGHLIGHT_1',
         HIGHLIGHT_2: 'HIGHLIGHT_2',
-        NEUTRAL: null
+        NEUTRAL: 'NEUTRAL',
     });
     
     const COLOURS = Object.freeze({
         HIDE: '#ffcccc',
-        HIGHLIGHT_1: '#fffacd',
-        HIGHLIGHT_2: '#ccffcc',
-        NEUTRAL: ''
+        HIDE_TEXT: '#cc0000',
+        HIGHLIGHT_1: '#fffacd', // Yellow
+        HIGHLIGHT_1_TEXT: '#b8860b',
+        HIGHLIGHT_2: '#ccffcc', // Green
+        HIGHLIGHT_2_TEXT: '#006400',
+        NEUTRAL: '',
     });
 
     // Styles
     const style = document.createElement('style');
     style.textContent = `
-        .curator-theme-hide {
-            background-color: ${COLOURS.HIDE}; color: #cc0000;
-        }
-        .curator-theme-h1   {
-            background-color: ${COLOURS.HIGHLIGHT_1}; color: #b8860b; /* Yellow */
-        }
-        .curator-theme-h2   {
-            background-color: ${COLOURS.HIGHLIGHT_2}; color: #006400; /* Green */
-        }
+        .curator-theme-hide { background-color: ${COLOURS.HIDE};        color: ${COLOURS.HIDE_TEXT}; }
+        .curator-theme-h1   { background-color: ${COLOURS.HIGHLIGHT_1}; color: ${COLOURS.HIGHLIGHT_1_TEXT}; }
+        .curator-theme-h2   { background-color: ${COLOURS.HIGHLIGHT_2}; color: ${COLOURS.HIGHLIGHT_2_TEXT}; }
+
         .curator-button-panel {
             position: absolute;
-            bottom: 12px;
-            right:  12px;
+            bottom: 12px; right:  12px;
             background: var(--palette-bg-primary);
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.16);
-            border: none;
             border-radius: 40px;
             padding: 4px 5px;
             display: flex;
@@ -69,30 +65,29 @@
         }
         .curator-button {
             border: none;
-            border-radius: 40px;
-            width:  20px;
-            height: 20px;
+            border-radius: 4px;
+            width:  20px; height: 20px;
             cursor: pointer;
             font-weight: 500;
             line-height: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: transform 0.1s, opacity 0.2s;
+            transition: all 0.2s ease;
             opacity: 0.7;
         }
         .curator-button:hover {
-            transform: scale(1.1);
             opacity: 1;
+            transform: scale(1.1);
         }
         .curator-button.active {
             border: 1px solid #555;
             opacity: 1;
             transform: scale(1.1);
         }
-        button.curator-theme-hide { border-radius: 40px 0px 0px 40px; }
-        button.curator-theme-h1   { border-radius: 0px; }
-        button.curator-theme-h2   { border-radius: 0px 40px 40px 0px; padding-bottom: 2px; }
+        .curator-button:first-child { border-radius: 40px 4px 4px 40px; }
+        .curator-button:last-child  { border-radius: 4px 40px 40px 4px; }
+        .curator-button.curator-theme-h2  { padding-bottom: 2px; }
 
         /* --- Listing Page Sidebar Panel --- */
         .curator-sidebar-panel {
@@ -109,7 +104,7 @@
         .curator-sidebar-label { font-weight: 500; font-size: 14px; line-height: 18px; color: #222222; }
         .curator-sidebar-buttons { display: flex; gap: 8px; }
         .curator-button-large {
-            padding: 14px 16px;
+            padding: 8px 14px;
             border-radius: 8px;
             border: 1px solid rgba(0,0,0,0.1);
             cursor: pointer;
@@ -118,56 +113,49 @@
 
         /* --- Dashboard Overlay --- */
         .curator-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            position: fixed; inset: 0;
             background: rgba(0,0,0,0.5);
             z-index: 99999;
             display: flex;
             justify-content: center;
             align-items: center;
+            backdrop-filter: blur(1.5px);
         }
         .curator-modal {
             background: white;
-            width: 80%;
-            max-width: 800px;
-            max-height: 80vh;
-            border-radius: 12px;
+            width: 90%; max-width: 800px;
+            max-height: 85vh;
+            border-radius: 16px;
             padding: 24px;
             overflow-y: auto;
             box-shadow: 0 10px 25px rgba(0,0,0,0.2);
             position: relative;
         }
-        .curator-modal h2 { margin-top: 0px; }
-        .curator-modal h3 {
-            text-align: center;
-            margin-top: 40px;
-            margin-bottom: 0px;
-        }
+        .curator-modal h2 { margin-top: 0; }
+        .curator-modal h3 { margin: 40px 0 0 0; text-align: center; }
         .curator-modal button {
             font-size: 24px;
             cursor: pointer;
             border: none;
             background: none;
+            padding: 0 6px 2px 6px;
         }
         .curator-modal button:hover {
             font-weight: 600;
         }
         .curator-close {
             position: absolute;
-            top: 15px;
-            right: 20px;
+            top: 15px; right: 20px;
         }
-        .curator-table { width: 100%; border-collapse: collapse; }
-        .curator-table th { text-align: left; border-bottom: 2px solid #ddd; padding: 6px; }
-        .curator-table td { border-bottom: 1px solid #eee; padding: 1px 6px; color: #222; }
-        .curator-link { text-decoration: none; color: #222; font-weight: 500; }
+        .curator-table { width: 100%; border-collapse: separate; border-spacing: 0 4px; }
+        .curator-table th { text-align: left; padding: 6px; }
+        .curator-table td { padding: 1px 6px; color: #222; }
+        .curator-table td:first-child { border-radius: 10px 0 0 10px; }
+        .curator-table td:last-child  { border-radius: 0 10px 10px 0; }
+        .curator-link { text-decoration: none; color: inherit; font-weight: 500; }
         .curator-link:hover { text-decoration: underline; }
     `;
     document.head.appendChild(style);
-
 
     // Helpers
 
