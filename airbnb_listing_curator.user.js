@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Airbnb Listing Curator (Hiding/Highlighting)
 // @namespace    https://github.com/Archer4499
-// @version      1.3.1
+// @version      1.3.2
 // @description  Hide or highlight listings on Airbnb
 // @author       Ailou
 // @license		 MIT
@@ -15,6 +15,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
+// @grant        GM_addValueChangeListener
+// @grant        window.onurlchange
 // ==/UserScript==
 
 (function() {
@@ -24,6 +26,8 @@
     const STORAGE_CURRENT_VERSION = 'v2';
     const STORAGE_VERSION_KEY = 'version';
     const STORAGE_LISTING_KEY = 'airbnb_listing_states';
+
+    const LOG_PREFIX = '[Airbnb Listing Curator]';
 
     // Colours
     const COLOURS = {
@@ -167,7 +171,7 @@
             // Migrate v1 to v2
             //  From each listing only storing its id to being an array also storing its name
             if (GM_getValue(STORAGE_VERSION_KEY, '') === 'v1') {
-                console.log(`[Airbnb Listing Curator] Migrating storage from v1 to v2.`);
+                console.log(`${LOG_PREFIX} Migrating storage from v1 to v2.`);
 
                 const listings = getSavedListings();
                 let migratedListings = {};
@@ -200,7 +204,7 @@
         const listings = getSavedListings();
         if (state === null) {
             delete listings[id]; // Remove from storage if neutral
-            console.log(`[Airbnb Listing Curator] Removed ID ${id} from storage.`);
+            console.log(`${LOG_PREFIX} Removed ID ${id} from storage.`);
         } else {
             if (Object.hasOwn(listings, id)) {
                 listings[id].state = state;
@@ -208,7 +212,7 @@
             } else {
                 listings[id] = {state: state, name: name};
             }
-            console.log(`[Airbnb Listing Curator] Set ID: "${id}", NAME: "${listings[id].name}" to ${state}.`);
+            console.log(`${LOG_PREFIX} Set ID: "${id}", NAME: "${listings[id].name}" to ${state}.`);
         }
         GM_setValue(STORAGE_LISTING_KEY, listings);
     }
@@ -313,63 +317,70 @@
 
 
     // --- Main Logic ---
-    function processListings() {
+    function processGridListings() {
         // Use the listing url meta tags to find each listing
         const metaTags = document.querySelectorAll('meta[itemprop="url"]');
 
-        for (const meta of metaTags) {
-            const content = meta.getAttribute('content');
-            if (!content) continue;
+        // The grid hasn't loaded yet or we're on a different page (Or the website has changed the tags)
+        if (!metaTags.length) return false;
 
-            // Extract the ID from the URL
-            const match = content.match(/rooms\/(\d+)/);
-            if (!match) continue;
-            const listingId = match[1];
-
-            const container = getContainerElement(meta);
-            if (!container) continue;
-
-            const anchor = getButtonAnchorElement(container);
-            if (!anchor) continue;
-
-            let panel = anchor.querySelector('.curator-button-panel');
-
-            // If the button panel doesn't exist, create one
-            if (!panel) {
-                panel = document.createElement('div');
-                panel.className = 'curator-button-panel';
-
-                const buttonHide = createButton('✕', 'curator-theme-hide', 'Hide Listing', 'HIDDEN', listingId, panel, container);
-                const buttonH1 = createButton('?', 'curator-theme-h1', 'Maybe', 'HIGHLIGHT_1', listingId, panel, container);
-                const buttonH2 = createButton('★', 'curator-theme-h2', 'Like', 'HIGHLIGHT_2', listingId, panel, container);
-
-                panel.appendChild(buttonHide);
-                panel.appendChild(buttonH1);
-                panel.appendChild(buttonH2);
-
-                // Allow clicks on the panel without triggering the listing card
-                panel.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
-
-                anchor.appendChild(panel);
-            }
-
-            // Apply the saved state or clear it
-            applyGridVisuals(container, getSavedListingOrDefault(listingId).state, panel);
+        for (const metaTag of metaTags) {
+            processGridListing(metaTag);
         }
+    }
+
+    function processGridListing(metaTag) {
+        const content = metaTag.getAttribute('content');
+        if (!content) return false;
+
+        // Extract the ID from the URL
+        const match = content.match(/rooms\/(\d+)/);
+        if (!match) return false;
+        const listingId = match[1];
+
+        const container = getContainerElement(metaTag);
+        if (!container) return false;
+
+        const anchor = getButtonAnchorElement(container);
+        if (!anchor) return false;
+
+        let panel = anchor.querySelector('.curator-button-panel');
+
+        // If the button panel doesn't exist, create one
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.className = 'curator-button-panel';
+
+            const buttonHide = createButton('✕', 'curator-theme-hide', 'Hide Listing', 'HIDDEN', listingId, panel, container);
+            const buttonH1 = createButton('?', 'curator-theme-h1', 'Maybe', 'HIGHLIGHT_1', listingId, panel, container);
+            const buttonH2 = createButton('★', 'curator-theme-h2', 'Like', 'HIGHLIGHT_2', listingId, panel, container);
+
+            panel.appendChild(buttonHide);
+            panel.appendChild(buttonH1);
+            panel.appendChild(buttonH2);
+
+            // Allow clicks on the panel without triggering the listing card
+            panel.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+
+            anchor.appendChild(panel);
+        }
+
+        // Apply the saved state or clear it
+        applyGridVisuals(container, getSavedListingOrDefault(listingId).state, panel);
     }
 
     function processSingleListing() {
         // Get ID from URL
         const urlMatch = window.location.href.match(/rooms\/(\d+)/);
-        if (!urlMatch) return;
+        if (!urlMatch) return false;
         const listingId = urlMatch[1];
 
         // Find Sidebar Anchor
         const sidebar = document.querySelector('div[data-section-id="BOOK_IT_SIDEBAR"]');
-        if (!sidebar) return;
+        if (!sidebar) return false;
 
         // Create the Panel if not already existing
-        let panel = document.querySelector('.curator-sidebar-panel');
+        let panel = sidebar.querySelector(':scope > .curator-sidebar-panel');
         if (!panel) {
             // Update/add the name for this listing if already saved
             const metaName = document.querySelector('meta[property="og:description"]');
@@ -386,7 +397,6 @@
             const label = document.createElement('span');
             label.className = 'curator-sidebar-label';
             label.innerText = 'Curator Status:';
-            panel.appendChild(label);
 
             const buttonContainer = document.createElement('div');
             buttonContainer.className = 'curator-sidebar-buttons';
@@ -414,12 +424,27 @@
                 return button;
             };
 
+            panel.appendChild(label);
             buttonContainer.appendChild(createSingleButton('Hide', COLOURS.HIDE, 'HIDDEN'));
             buttonContainer.appendChild(createSingleButton('Maybe', COLOURS.HIGHLIGHT_1, 'HIGHLIGHT_1'));
             buttonContainer.appendChild(createSingleButton('Like', COLOURS.HIGHLIGHT_2, 'HIGHLIGHT_2'));
             panel.appendChild(buttonContainer);
             // Attempt to insert above the price in the sidebar
-            sidebar.insertBefore(panel, sidebar.lastChild);
+            sidebar.insertBefore(panel, sidebar.firstChild);
+
+            // Re-create the panel when it's removed by the site loading process
+            const sidebarObserver = new MutationObserver((mutationList, observer) => {
+                for (const mutation of mutationList) {
+                    for (const node of mutation.addedNodes) {
+                        // If the added node contains the new sidebar then we can re-create the panel
+                        if (node.querySelector('div[data-section-id="BOOK_IT_SIDEBAR"]')) {
+                            observer.disconnect();
+                            processSingleListing();
+                        }
+                    }
+                }
+            });
+            sidebarObserver.observe(sidebar.parentElement, { childList: true });
         }
 
         // Update Visuals based on state
@@ -488,7 +513,7 @@
 
             const removeButton = document.createElement('button');
             removeButton.innerHTML = '&times;';
-            removeButton.onclick = () => { setSavedListing(id, null); tr.remove(); processListings(); };
+            removeButton.onclick = () => { setSavedListing(id, null); tr.remove(); processGridListings(); };
             const removeCell = document.createElement('td');
             removeCell.style.textAlign = 'right';
             removeCell.appendChild(removeButton);
@@ -516,42 +541,153 @@
     }
 
     // Menu Commands
-    GM_registerMenuCommand("Show Curator List", showDashboard);
+    GM_registerMenuCommand('Show Curator List', showDashboard);
 
-    GM_registerMenuCommand("Clear ALL Data", () => {
-        if (confirm("Reset everything? This will unhide all listings.")) {
+    GM_registerMenuCommand('Clear ALL Data', () => {
+        if (confirm('Reset everything? This will unhide all listings.')) {
             GM_setValue(STORAGE_LISTING_KEY, {});
             location.reload();
         }
     });
 
     // Set observers and intervals
-    if (window.location.href.includes('/homes')) {
-        // If on the listings grid page
+    function findGrid() {
+        const gridAncestor = document.querySelector('div#site-content');
+        if (!gridAncestor) return null;
 
-        // Watch for DOM changes of the listings grid
-        const observer = new MutationObserver(() => {
-            processListings();
+        const nodeIterator = document.createNodeIterator(gridAncestor, NodeFilter.SHOW_ELEMENT, (node) =>
+            window.getComputedStyle(node).display === 'grid'
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_REJECT,
+        );
+
+        // Returns null if no valid next node
+        return nodeIterator.nextNode()
+    }
+
+    function attachListingObserver(node) {
+        if (node.childElementCount === 1) {
+            // This is a related listings container in the grid
+            const relatedsObserver = new MutationObserver((mutationList, _) => {
+                for (const mutation of mutationList) {
+                    for (const node of mutation.addedNodes) {
+                        // Process any listings that are in the added node
+                        for (const metaTag of node.querySelectorAll('meta[itemprop="url"]')) {
+                            processGridListing(metaTag);
+                        }
+                    }
+                }
+            });
+            relatedsObserver.observe(node.children[0], { childList: true, subtree: true });
+        } else {
+            // This is an actual listing node
+
+            // Process the node initially if it already has been loaded before we got to it
+            const metaTag = node.querySelector('meta[itemprop="url"]');
+            if (metaTag) {
+                processGridListing(metaTag);
+            }
+
+            const listingObserver = new MutationObserver((mutationList, _) => {
+                for (const mutation of mutationList) {
+                    for (const node of mutation.addedNodes) {
+                        // If the added node contains the url meta tag then we can process it as a listing
+                        const metaTag = node.querySelector('meta[itemprop="url"]');
+                        if (metaTag) processGridListing(metaTag);
+                    }
+                }
+            });
+            // Watch the element that gets the useful parts of the listing added to it later
+            listingObserver.observe(node.children[1], { childList: true });
+        }
+    }
+
+    const gridObserver = new MutationObserver((mutationList, _) => {
+        for (const mutation of mutationList) {
+            for (const node of mutation.addedNodes) {
+                attachListingObserver(node);
+            }
+        }
+    });
+
+    let oldGrid = null;
+
+    function process(url) {
+        if (url.includes('/homes')) {
+            (function loopUntilTrue() {
+                const grid = findGrid()
+                if (!grid) {
+                    setTimeout(loopUntilTrue, 200);
+                } else {
+                    // Still have the old grid so we don't need to re-process it
+                    if (grid === oldGrid) return
+                    oldGrid = grid;
+
+                    // Process any existing listings in the grid
+                    for (const listing of grid.children) {
+                        attachListingObserver(listing);
+                    }
+
+                    // Watch for new nodes in the listings grid
+                    gridObserver.disconnect();
+                    gridObserver.observe(grid, { childList: true });
+                }
+            })();
+
+        } else if (url.includes('/rooms/')) {
+            // Run until page loads enough for the sidebar to exist, possible future changes are handled further down
+            (function loopUntilTrue() {
+                if (processSingleListing() === false) {
+                    setTimeout(loopUntilTrue, 200);
+                }
+            })();
+        }
+    }
+
+    // Run initially
+    process(window.location.href);
+
+    // First we try window.onurlchange as it's supported by Tampermonkey but it appears not by the other Greasemonkey-likes
+    //  https://www.tampermonkey.net/documentation.php?locale=en#api:window.onurlchange
+    if ('onurlchange' in window) {
+        window.addEventListener('urlchange', (info) => {
+            process(info.url);
         });
-        observer.observe(document.querySelector('div[data-xray-jira-component="Guest: Listing Cards"]'), { childList: true, subtree: true });
+    } else if ('navigation' in window) {
+        // If window.onurlchange not supported, try the Navigation API, though this is not supported by Firefox as of writing this in 2026
+        //  https://developer.mozilla.org/en-US/docs/Web/API/Navigation/navigatesuccess_event
+        window.navigation.addEventListener('navigatesuccess', (event) => {
+            process(event.target.currentEntry.url);
+        });
+    } else {
+        // Legacy fallback
+        setInterval(() => {
+            process(window.location.href);
+        }, 2000);
+    }
 
-        // Also run every 2 seconds to catch any other sources of changes
-        setInterval(processListings, 2000);
+    // Also listen for storage changes so we can update any relevant ids immediately
+    //  Should work with Tampermonkey and Violentmonkey, but not sure about others
+    if (typeof GM_addValueChangeListener === 'function') {
+        GM_addValueChangeListener(STORAGE_LISTING_KEY, (key, oldValue, newValue, remote) => {
+            if (remote) {
+                console.log(`${LOG_PREFIX} Remote storage change detected`);
 
-        // Initial run
-        setTimeout(() => {
-            processListings();
-        }, 500);
-
-    } else if (window.location.href.includes('/rooms/')) {
-        // Or on an actual listing page
-
-        // Also run every 2 seconds to catch any other sources of changes
-        setInterval(processSingleListing, 2000);
-
-        // Initial run
-        setTimeout(() => {
-            processSingleListing();
-        }, 800);
+                if (window.location.href.includes('/homes')) {
+                    processGridListings();
+                } else if (window.location.href.includes('/rooms/')) {
+                    processSingleListing();
+                }
+            }
+        });
+    } else {
+        // Use setInterval to check occasionally for storage updates instead
+        setInterval(() => {
+            if (window.location.href.includes('/homes')) {
+                processGridListings();
+            } else if (window.location.href.includes('/rooms/')) {
+                processSingleListing();
+            }
+        }, 2000);
     }
 })();
