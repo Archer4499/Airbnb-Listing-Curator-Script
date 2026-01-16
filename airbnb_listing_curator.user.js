@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Airbnb Listing Curator (Hiding/Highlighting)
 // @namespace    https://github.com/Archer4499
-// @version      1.3.2
+// @version      1.3.3
 // @description  Hide or highlight listings on Airbnb
 // @author       Ailou
 // @license		 MIT
@@ -29,13 +29,19 @@
 
     const LOG_PREFIX = '[Airbnb Listing Curator]';
 
-    // Colours
-    const COLOURS = {
+    const STATE = Object.freeze({
+        HIDDEN: 'HIDDEN',
+        HIGHLIGHT_1: 'HIGHLIGHT_1',
+        HIGHLIGHT_2: 'HIGHLIGHT_2',
+        NEUTRAL: null
+    });
+    
+    const COLOURS = Object.freeze({
         HIDE: '#ffcccc',
         HIGHLIGHT_1: '#fffacd',
         HIGHLIGHT_2: '#ccffcc',
         NEUTRAL: ''
-    };
+    });
 
     // Styles
     const style = document.createElement('style');
@@ -155,8 +161,8 @@
             right: 20px;
         }
         .curator-table { width: 100%; border-collapse: collapse; }
-        .curator-table th { text-align: left; border-bottom: 2px solid #ddd; padding: 8px; }
-        .curator-table td { border-bottom: 1px solid #eee; padding: 8px; color: #222; }
+        .curator-table th { text-align: left; border-bottom: 2px solid #ddd; padding: 6px; }
+        .curator-table td { border-bottom: 1px solid #eee; padding: 1px 6px; color: #222; }
         .curator-link { text-decoration: none; color: #222; font-weight: 500; }
         .curator-link:hover { text-decoration: underline; }
     `;
@@ -244,20 +250,20 @@
         const buttons = panel.querySelectorAll('.curator-button');
         if (!buttons) return;
 
-        if (state === 'HIDDEN') {
+        if (state === STATE.HIDDEN) {
             container.style.display = 'none';
             container.style.backgroundColor = '';
             // Never mark the hide button active because it's invisible when 'active'.
             buttons[1].classList.remove('active');
             buttons[2].classList.remove('active');
 
-        } else if (state === 'HIGHLIGHT_1') {
+        } else if (state === STATE.HIGHLIGHT_1) {
             container.style.display = '';
             container.style.backgroundColor = COLOURS.HIGHLIGHT_1;
             buttons[1].classList.add('active');
             buttons[2].classList.remove('active');
 
-        } else if (state === 'HIGHLIGHT_2') {
+        } else if (state === STATE.HIGHLIGHT_2) {
             container.style.display = '';
             container.style.backgroundColor = COLOURS.HIGHLIGHT_2;
             buttons[1].classList.remove('active');
@@ -280,9 +286,9 @@
             button.style.border = '1px solid rgba(0,0,0,0.1)';
         }
 
-        if (state === 'HIDDEN') buttons[0].style.border = '2px solid red';
-        if (state === 'HIGHLIGHT_1') buttons[1].style.border = '2px solid orange';
-        if (state === 'HIGHLIGHT_2') buttons[2].style.border = '2px solid green';
+        if (state === STATE.HIDDEN) buttons[0].style.border = '2px solid red';
+        else if (state === STATE.HIGHLIGHT_1) buttons[1].style.border = '2px solid orange';
+        else if (state === STATE.HIGHLIGHT_2) buttons[2].style.border = '2px solid green';
     }
 
     function createButton(text, className, title, targetState, listingId, panel, container) {
@@ -303,10 +309,10 @@
                 applyGridVisuals(container, null, panel);
             } else {
                 // Set New State
-                if (targetState === 'HIDDEN' && !confirm('Hide this listing?')) return;
+                if (targetState === STATE.HIDDEN && !confirm('Hide this listing?')) return;
 
                 const metaName = container.querySelector('meta[itemprop="name"]');
-                const name = (metaName) ? metaName.content : null;
+                const name = metaName?.content ?? null;
 
                 setSavedListing(listingId, targetState, name);
                 applyGridVisuals(container, targetState, panel);
@@ -320,9 +326,7 @@
     function processGridListings() {
         // Use the listing url meta tags to find each listing
         const metaTags = document.querySelectorAll('meta[itemprop="url"]');
-
-        // The grid hasn't loaded yet or we're on a different page (Or the website has changed the tags)
-        if (!metaTags.length) return false;
+        if (!metaTags) return false;
 
         for (const metaTag of metaTags) {
             processGridListing(metaTag);
@@ -351,9 +355,9 @@
             panel = document.createElement('div');
             panel.className = 'curator-button-panel';
 
-            const buttonHide = createButton('✕', 'curator-theme-hide', 'Hide Listing', 'HIDDEN', listingId, panel, container);
-            const buttonH1 = createButton('?', 'curator-theme-h1', 'Maybe', 'HIGHLIGHT_1', listingId, panel, container);
-            const buttonH2 = createButton('★', 'curator-theme-h2', 'Like', 'HIGHLIGHT_2', listingId, panel, container);
+            const buttonHide = createButton('✕', 'curator-theme-hide', 'Hide Listing', STATE.HIDDEN, listingId, panel, container);
+            const buttonH1 = createButton('?', 'curator-theme-h1', 'Maybe', STATE.HIGHLIGHT_1, listingId, panel, container);
+            const buttonH2 = createButton('★', 'curator-theme-h2', 'Like', STATE.HIGHLIGHT_2, listingId, panel, container);
 
             panel.appendChild(buttonHide);
             panel.appendChild(buttonH1);
@@ -384,7 +388,7 @@
         if (!panel) {
             // Update/add the name for this listing if already saved
             const metaName = document.querySelector('meta[property="og:description"]');
-            const name = (metaName) ? metaName.content : null;
+            const name = metaName?.content ?? null;
 
             const listing = getSavedListingOrDefault(listingId);
             if (listing.state && name && name !== listing.name) {
@@ -415,7 +419,7 @@
                         applyListingPageVisuals(null, panel);
                     } else {
                         // Set New State
-                        if (targetState === 'HIDDEN' && !confirm('Hide this listing?')) return;
+                        if (targetState === STATE.HIDDEN && !confirm('Hide this listing?')) return;
 
                         setSavedListing(listingId, targetState, name);
                         applyListingPageVisuals(targetState, panel);
@@ -425,9 +429,9 @@
             };
 
             panel.appendChild(label);
-            buttonContainer.appendChild(createSingleButton('Hide', COLOURS.HIDE, 'HIDDEN'));
-            buttonContainer.appendChild(createSingleButton('Maybe', COLOURS.HIGHLIGHT_1, 'HIGHLIGHT_1'));
-            buttonContainer.appendChild(createSingleButton('Like', COLOURS.HIGHLIGHT_2, 'HIGHLIGHT_2'));
+            buttonContainer.appendChild(createSingleButton('Hide', COLOURS.HIDE, STATE.HIDDEN));
+            buttonContainer.appendChild(createSingleButton('Maybe', COLOURS.HIGHLIGHT_1, STATE.HIGHLIGHT_1));
+            buttonContainer.appendChild(createSingleButton('Like', COLOURS.HIGHLIGHT_2, STATE.HIGHLIGHT_2));
             panel.appendChild(buttonContainer);
             // Attempt to insert above the price in the sidebar
             sidebar.insertBefore(panel, sidebar.firstChild);
@@ -507,7 +511,7 @@
         for (const [id, listing] of Object.entries(data)) {
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td>${(listing.name) ? listing.name : id}</td>
+                <td>${listing.name || id}</td>
                 <td><a href="https://www.airbnb.com.au/rooms/${id}" target="_blank" class="curator-link">View Listing</a></td>
             `;
 
@@ -519,11 +523,11 @@
             removeCell.appendChild(removeButton);
             tr.appendChild(removeCell);
 
-            if (listing.state === 'HIDDEN') {
+            if (listing.state === STATE.HIDDEN) {
                 hiddenTbody.appendChild(tr);
-            } else if (listing.state === 'HIGHLIGHT_1') {
+            } else if (listing.state === STATE.HIGHLIGHT_1) {
                 highlight1Tbody.appendChild(tr);
-            } else if (listing.state === 'HIGHLIGHT_2') {
+            } else if (listing.state === STATE.HIGHLIGHT_2) {
                 highlight2Tbody.appendChild(tr);
             }
         }
@@ -584,9 +588,7 @@
 
             // Process the node initially if it already has been loaded before we got to it
             const metaTag = node.querySelector('meta[itemprop="url"]');
-            if (metaTag) {
-                processGridListing(metaTag);
-            }
+            if (metaTag) processGridListing(metaTag);
 
             const listingObserver = new MutationObserver((mutationList, _) => {
                 for (const mutation of mutationList) {
