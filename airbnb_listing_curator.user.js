@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Airbnb Listing Curator (Hiding/Highlighting)
 // @namespace    https://github.com/Archer4499
-// @version      1.3.5
+// @version      1.3.6
 // @description  Hide or highlight listings on Airbnb
 // @author       Ailou
 // @license		 MIT
@@ -35,8 +35,14 @@
         HIGHLIGHT_2: 'HIGHLIGHT_2',
         NEUTRAL: 'NEUTRAL',
     });
+
+    const STATE_CLASS = Object.freeze({
+        [STATE.HIDDEN]: 'curator-theme-hide',
+        [STATE.HIGHLIGHT_1]: 'curator-theme-h1',
+        [STATE.HIGHLIGHT_2]: 'curator-theme-h2',
+    });
     
-    const COLOURS = Object.freeze({
+    const COLOUR = Object.freeze({
         HIDE: '#ffcccc',
         HIDE_TEXT: '#cc0000',
         HIGHLIGHT_1: '#fffacd', // Yellow
@@ -49,9 +55,9 @@
     // Styles
     const style = document.createElement('style');
     style.textContent = `
-        .curator-theme-hide { background-color: ${COLOURS.HIDE};        color: ${COLOURS.HIDE_TEXT}; }
-        .curator-theme-h1   { background-color: ${COLOURS.HIGHLIGHT_1}; color: ${COLOURS.HIGHLIGHT_1_TEXT}; }
-        .curator-theme-h2   { background-color: ${COLOURS.HIGHLIGHT_2}; color: ${COLOURS.HIGHLIGHT_2_TEXT}; }
+        .${STATE_CLASS[STATE.HIDDEN]}      { background-color: ${COLOUR.HIDE};        color: ${COLOUR.HIDE_TEXT}; }
+        .${STATE_CLASS[STATE.HIGHLIGHT_1]} { background-color: ${COLOUR.HIGHLIGHT_1}; color: ${COLOUR.HIGHLIGHT_1_TEXT}; }
+        .${STATE_CLASS[STATE.HIGHLIGHT_2]} { background-color: ${COLOUR.HIGHLIGHT_2}; color: ${COLOUR.HIGHLIGHT_2_TEXT}; }
 
         .curator-button-panel {
             position: absolute;
@@ -87,7 +93,7 @@
         }
         .curator-button:first-child { border-radius: 40px 4px 4px 40px; }
         .curator-button:last-child  { border-radius: 4px 40px 40px 4px; }
-        .curator-button.curator-theme-h2  { padding-bottom: 2px; }
+        .curator-button.${STATE_CLASS[STATE.HIGHLIGHT_2]}  { padding-bottom: 2px; }
 
         /* --- Listing Page Sidebar Panel --- */
         .curator-sidebar-panel {
@@ -101,14 +107,20 @@
             justify-content: space-between;
             align-items: center;
         }
-        .curator-sidebar-label { font-weight: 500; font-size: 14px; line-height: 18px; color: #222222; }
+        .curator-sidebar-label { font-weight: 500; font-size: 14px; line-height: 18px; color: inherit; }
         .curator-sidebar-buttons { display: flex; gap: 8px; }
         .curator-button-large {
             padding: 8px 14px;
             border-radius: 8px;
             border: 1px solid rgba(0,0,0,0.1);
             cursor: pointer;
-            font-weight: 500;
+            font-weight: 400;
+        }
+        .curator-button-large.active {
+            box-shadow: var(--elevation-secondary-box-shadow);
+            border-color: black;
+            color: black;
+            transform: scale(1.05);
         }
 
         /* --- Dashboard Overlay --- */
@@ -235,68 +247,18 @@
         return anchor;
     }
 
-    function applyGridVisuals(container, state, panel) {
-        const buttons = panel.querySelectorAll('.curator-button');
+    function applyListingVisuals(state, panel, container=null) {
+        const buttons = panel.querySelectorAll('.curator-button, .curator-button-large');
         if (!buttons.length) return;
 
-        const stateConfigs = {
-            [STATE.HIDDEN]: { display: 'none', color: COLOURS.NEUTRAL, activeIndex: 0 },
-            [STATE.HIGHLIGHT_1]: { display: '', color: COLOURS.HIGHLIGHT_1, activeIndex: 1 },
-            [STATE.HIGHLIGHT_2]: { display: '', color: COLOURS.HIGHLIGHT_2, activeIndex: 2 },
-            [STATE.NEUTRAL]: { display: '', color: COLOURS.NEUTRAL, activeIndex: -1 },
+        for (const button of buttons) {
+            button.classList.toggle('active', button.classList.contains(STATE_CLASS[state]));
         };
 
-        // Get the config for the current state, or fall back to a default "reset" state
-        const config = stateConfigs[state] || stateConfigs[STATE.NEUTRAL];
-
-        container.style.display = config.display;
-        container.style.backgroundColor = config.color;
-
-        buttons.forEach((button, index) => {
-            button.classList.toggle('active', index === config.activeIndex);
-        });
-    }
-
-    function applyListingPageVisuals(state, panel) {
-        const buttons = panel.querySelectorAll('.curator-button-large');
-        if (!buttons.length) return false;
-        for (const button of buttons) {
-            button.style.border = '1px solid rgba(0,0,0,0.1)';
+        if (container) {
+            container.style.display = (state === STATE.HIDDEN) ? 'none' : '';
+            container.style.backgroundColor = COLOUR[state] || COLOUR.NEUTRAL;
         }
-
-        if (state === STATE.HIDDEN) buttons[0].style.border = '2px solid red';
-        else if (state === STATE.HIGHLIGHT_1) buttons[1].style.border = '2px solid orange';
-        else if (state === STATE.HIGHLIGHT_2) buttons[2].style.border = '2px solid green';
-    }
-
-    function createButton(text, className, title, targetState, listingId, panel, container) {
-        const button = document.createElement('button');
-        button.innerText = text;
-        button.className = `curator-button ${className}`;
-        button.title = title;
-
-        button.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            const currentSavedState = getSavedListingOrDefault(listingId).state;
-
-            if (currentSavedState === targetState) {
-                // Toggle OFF (return to neutral)
-                setSavedListing(listingId, null);
-                applyGridVisuals(container, null, panel);
-            } else {
-                // Set New State
-                if (targetState === STATE.HIDDEN && !confirm('Hide this listing?')) return;
-
-                const metaName = container.querySelector('meta[itemprop="name"]');
-                const name = metaName?.content ?? null;
-
-                setSavedListing(listingId, targetState, name);
-                applyGridVisuals(container, targetState, panel);
-            }
-        });
-        return button;
     }
 
 
@@ -333,9 +295,36 @@
             panel = document.createElement('div');
             panel.className = 'curator-button-panel';
 
-            const buttonHide = createButton('✕', 'curator-theme-hide', 'Hide Listing', STATE.HIDDEN, listingId, panel, container);
-            const buttonH1 = createButton('?', 'curator-theme-h1', 'Maybe', STATE.HIGHLIGHT_1, listingId, panel, container);
-            const buttonH2 = createButton('★', 'curator-theme-h2', 'Like', STATE.HIGHLIGHT_2, listingId, panel, container);
+            const createButton = (text, title, targetState) => {
+                const button = document.createElement('button');
+                button.innerText = text;
+                button.className = `curator-button ${STATE_CLASS[targetState]}`;
+                button.title = title;
+
+                button.addEventListener('click', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+
+                    if (getSavedListingOrDefault(listingId).state === targetState) {
+                        // Toggle OFF (return to neutral)
+                        setSavedListing(listingId, null);
+                        applyListingVisuals(null, panel, container);
+                    } else {
+                        // Set New State
+                        if (targetState === STATE.HIDDEN && !confirm('Hide this listing?')) return;
+
+                        const metaName = container.querySelector('meta[itemprop="name"]');
+                        const name = metaName?.content ?? null;
+
+                        setSavedListing(listingId, targetState, name);
+                        applyListingVisuals(targetState, panel, container);
+                    }
+                });
+                return button;
+            };
+
+            const buttonHide = createButton('✕', 'Hide Listing', STATE.HIDDEN);
+            const buttonH1 = createButton('?', 'Maybe', STATE.HIGHLIGHT_1);
+            const buttonH2 = createButton('★', 'Like', STATE.HIGHLIGHT_2);
 
             panel.appendChild(buttonHide);
             panel.appendChild(buttonH1);
@@ -348,7 +337,7 @@
         }
 
         // Apply the saved state or clear it
-        applyGridVisuals(container, getSavedListingOrDefault(listingId).state, panel);
+        applyListingVisuals(getSavedListingOrDefault(listingId).state, panel, container);
     }
 
     function processSingleListing() {
@@ -378,38 +367,35 @@
 
             const label = document.createElement('span');
             label.className = 'curator-sidebar-label';
-            label.innerText = 'Curator Status:';
+            label.innerText = 'Curator\nStatus:';
 
             const buttonContainer = document.createElement('div');
             buttonContainer.className = 'curator-sidebar-buttons';
 
-            const createSingleButton = (text, color, targetState) => {
+            const createSingleButton = (text, targetState) => {
                 const button = document.createElement('button');
                 button.innerText = text;
-                button.className = 'curator-button-large';
-                button.style.backgroundColor = color;
+                button.className = `curator-button-large ${STATE_CLASS[targetState]}`;
                 button.onclick = () => {
-                    const currentSavedState = getSavedListingOrDefault(listingId).state;
-
-                    if (currentSavedState === targetState) {
+                    if (getSavedListingOrDefault(listingId).state === targetState) {
                         // Toggle OFF (return to neutral)
                         setSavedListing(listingId, null);
-                        applyListingPageVisuals(null, panel);
+                        applyListingVisuals(null, panel);
                     } else {
                         // Set New State
                         if (targetState === STATE.HIDDEN && !confirm('Hide this listing?')) return;
 
                         setSavedListing(listingId, targetState, name);
-                        applyListingPageVisuals(targetState, panel);
+                        applyListingVisuals(targetState, panel);
                     }
                 };
                 return button;
             };
 
             panel.appendChild(label);
-            buttonContainer.appendChild(createSingleButton('Hide', COLOURS.HIDE, STATE.HIDDEN));
-            buttonContainer.appendChild(createSingleButton('Maybe', COLOURS.HIGHLIGHT_1, STATE.HIGHLIGHT_1));
-            buttonContainer.appendChild(createSingleButton('Like', COLOURS.HIGHLIGHT_2, STATE.HIGHLIGHT_2));
+            buttonContainer.appendChild(createSingleButton('Hide', STATE.HIDDEN));
+            buttonContainer.appendChild(createSingleButton('Maybe', STATE.HIGHLIGHT_1));
+            buttonContainer.appendChild(createSingleButton('Like', STATE.HIGHLIGHT_2));
             panel.appendChild(buttonContainer);
             // Attempt to insert above the price in the sidebar
             sidebar.insertBefore(panel, sidebar.firstChild);
@@ -431,7 +417,7 @@
 
         // Update Visuals based on state
         const state = getSavedListingOrDefault(listingId).state;
-        applyListingPageVisuals(state, panel);
+        applyListingVisuals(state, panel);
     }
 
     // Dashboard
@@ -465,24 +451,23 @@
         const hiddenTitle = document.createElement('h3');
         hiddenTitle.innerText = 'Hidden';
 
-        const headerHTML = `<thead><tr><th>Name</th><th style="width: 130px;">Link</th><th style="text-align: right;width: 10px;">Remove</th></tr></thead><tbody></tbody>`;
-        const highlight2Table = document.createElement('table');
-        highlight2Table.className = 'curator-table';
-        highlight2Table.innerHTML = headerHTML;
-        const highlight2Tbody = highlight2Table.querySelector('tbody');
-        highlight2Tbody.className = 'curator-theme-h2';
+        const createTable = (targetState) => {
+            const table = document.createElement('table');
+            table.className = 'curator-table';
+            table.innerHTML = `<thead><tr>
+                                   <th>Name</th>
+                                   <th style="width: 130px;">Link</th>
+                                   <th style="text-align: right;width: 10px;">Remove</th>
+                               </tr></thead>`;
+            const tbody = table.createTBody();
+            tbody.className = STATE_CLASS[targetState];
 
-        const highlight1Table = document.createElement('table');
-        highlight1Table.className = 'curator-table';
-        highlight1Table.innerHTML = headerHTML;
-        const highlight1Tbody = highlight1Table.querySelector('tbody');
-        highlight1Tbody.className = 'curator-theme-h1';
+            return table;
+        };
 
-        const hiddenTable = document.createElement('table');
-        hiddenTable.className = 'curator-table';
-        hiddenTable.innerHTML = headerHTML;
-        const hiddenTbody = hiddenTable.querySelector('tbody');
-        hiddenTbody.className = 'curator-theme-hide';
+        const highlight2Table = createTable(STATE.HIGHLIGHT_2);
+        const highlight1Table = createTable(STATE.HIGHLIGHT_1);
+        const hiddenTable = createTable(STATE.HIDDEN);
 
         const data = getSavedListings();
 
@@ -502,11 +487,11 @@
             tr.appendChild(removeCell);
 
             if (listing.state === STATE.HIDDEN) {
-                hiddenTbody.appendChild(tr);
+                hiddenTable.tBodies[0].appendChild(tr);
             } else if (listing.state === STATE.HIGHLIGHT_1) {
-                highlight1Tbody.appendChild(tr);
+                highlight1Table.tBodies[0].appendChild(tr);
             } else if (listing.state === STATE.HIGHLIGHT_2) {
-                highlight2Tbody.appendChild(tr);
+                highlight2Table.tBodies[0].appendChild(tr);
             }
         }
 
