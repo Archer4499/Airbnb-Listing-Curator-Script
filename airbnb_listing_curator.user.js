@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Airbnb Listing Curator (Hiding/Highlighting)
 // @namespace    https://github.com/Archer4499
-// @version      1.3.4
+// @version      1.3.5
 // @description  Hide or highlight listings on Airbnb
 // @author       Ailou
 // @license		 MIT
@@ -157,6 +157,7 @@
     `;
     document.head.appendChild(style);
 
+
     // Helpers
 
     // Run once each time the script is initialised
@@ -236,40 +237,29 @@
 
     function applyGridVisuals(container, state, panel) {
         const buttons = panel.querySelectorAll('.curator-button');
-        if (!buttons) return;
+        if (!buttons.length) return;
 
-        if (state === STATE.HIDDEN) {
-            container.style.display = 'none';
-            container.style.backgroundColor = '';
-            // Never mark the hide button active because it's invisible when 'active'.
-            buttons[1].classList.remove('active');
-            buttons[2].classList.remove('active');
+        const stateConfigs = {
+            [STATE.HIDDEN]: { display: 'none', color: COLOURS.NEUTRAL, activeIndex: 0 },
+            [STATE.HIGHLIGHT_1]: { display: '', color: COLOURS.HIGHLIGHT_1, activeIndex: 1 },
+            [STATE.HIGHLIGHT_2]: { display: '', color: COLOURS.HIGHLIGHT_2, activeIndex: 2 },
+            [STATE.NEUTRAL]: { display: '', color: COLOURS.NEUTRAL, activeIndex: -1 },
+        };
 
-        } else if (state === STATE.HIGHLIGHT_1) {
-            container.style.display = '';
-            container.style.backgroundColor = COLOURS.HIGHLIGHT_1;
-            buttons[1].classList.add('active');
-            buttons[2].classList.remove('active');
+        // Get the config for the current state, or fall back to a default "reset" state
+        const config = stateConfigs[state] || stateConfigs[STATE.NEUTRAL];
 
-        } else if (state === STATE.HIGHLIGHT_2) {
-            container.style.display = '';
-            container.style.backgroundColor = COLOURS.HIGHLIGHT_2;
-            buttons[1].classList.remove('active');
-            buttons[2].classList.add('active');
+        container.style.display = config.display;
+        container.style.backgroundColor = config.color;
 
-        } else {
-            // Remove all changes
-            container.style.display = '';
-            container.style.backgroundColor = '';
-            buttons[0].classList.remove('active');
-            buttons[1].classList.remove('active');
-            buttons[2].classList.remove('active');
-        }
+        buttons.forEach((button, index) => {
+            button.classList.toggle('active', index === config.activeIndex);
+        });
     }
 
     function applyListingPageVisuals(state, panel) {
         const buttons = panel.querySelectorAll('.curator-button-large');
-        if (!buttons) return;
+        if (!buttons.length) return false;
         for (const button of buttons) {
             button.style.border = '1px solid rgba(0,0,0,0.1)';
         }
@@ -314,7 +304,7 @@
     function processGridListings() {
         // Use the listing url meta tags to find each listing
         const metaTags = document.querySelectorAll('meta[itemprop="url"]');
-        if (!metaTags) return false;
+        if (!metaTags.length) return false;
 
         for (const metaTag of metaTags) {
             processGridListing(metaTag);
